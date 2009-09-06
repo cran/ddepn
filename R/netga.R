@@ -1,0 +1,342 @@
+# genetic algorithm for network search
+# n: initial population size
+# q: selection rate
+# m: mutation rate
+# nodes: names of the nodes in the network
+
+netga <- function(dat, stimuli, P=NULL, maxiterations=1000, p=100,
+		q=0.3, m=0.8, hmmiterations=30, multicores=FALSE, usebics=FALSE, cores=2,
+		lambda=NULL, B=NULL,
+		Z=NULL, scorefile=NULL,fanin=4,
+		gam=NULL,it=NULL,K=NULL,quantL=.5,quantBIC=.5) {
+  dat[is.na(dat)] <- 0
+  V <- rownames(dat)
+  tps <- unique(sapply(colnames(dat), function(x) strsplit(x,"_")[[1]][2]))
+  reps <- table(sub("_[0-9].*$","",colnames(dat))) / length(tps)
+  phireference <- matrix(0,nrow=length(V), ncol=length(V), dimnames=list(V,V))
+  laplace <- !is.null(lambda) && !is.null(B) && !is.null(Z)
+  sparsity <- !is.null(gam) && !is.null(it) && !is.null(K)
+  
+  #####################################################################
+  #  First create a population of networks if none is given           #
+  #####################################################################
+  if(is.null(P)) {
+	  phireference <- matrix(0,nrow=length(V), ncol=length(V), dimnames=list(V,V))
+	  X <- vector("list",p)
+	  X[[1]] <- phireference
+	  if(fanin>=nrow(phireference)) {
+	  	notstim <- setdiff(1:nrow(dat),unlist(stimuli))
+	  	phireference[,notstim] <- phireference[,notstim] + 1 # set all zeros to 1, i.e. make a completely connected network with only activations
+	  	diag(phireference) <- 0 ## no self activations
+	  	X[[2]] <- phireference
+	  }
+	  if(multicores) {
+		P <- mclapply(X, getfirstphi, dat=dat,stimuli=stimuli,V=V,tps=tps,reps=reps,hmmiterations=hmmiterations,lambda=lambda,B=B,Z=Z,fanin=fanin,gam=gam,it=it,K=K, mc.preschedule=FALSE,mc.cores=cores)		
+	  } else {
+		P <- lapply(X, getfirstphi, dat=dat,stimuli=stimuli,V=V,tps=tps,reps=reps,hmmiterations=hmmiterations,lambda=lambda,B=B,Z=Z,fanin=fanin,gam=gam,it=it,K=K)
+	  }
+  }
+  ## check if all individuals are set correctly
+  ## is this a problem of mclapply/lapply? sometimes, returnvalues in the list P are null...
+  for(i in 1:length(P)) {
+	  if(length(which(colSums(ifelse(P[[i]]$phi==0,0,1))>fanin))>0 |
+			  any(P[[i]]$phi[,unique(names(unlist(stimuli)))]!=0)) {
+		  print("**********  INIT: fanin too big somewhere or edge leading to stimulus")
+		  browser()
+	  }	  
+	  if(class(P[[i]])=="try-error" || is.null(P[[i]])){
+		  P[[i]] <- getfirstphi(X[[i]], dat=dat,stimuli=stimuli,V=V,tps=tps,reps=reps,hmmiterations=hmmiterations,lambda=lambda,B=B,Z=Z,fanin=fanin,gam=gam,it=it,K=K)
+	  }
+  }  
+  if(any(sapply(P, class)!="list")) {
+	  print("netga.R, line 53: Some elements in the network list P seem to be empty.")
+	  browser()
+  }
+  if(usebics){
+	  wks <- sapply(P, function(x) x$bic)
+	  optwks <- quantile(wks,na.rm=T,probs=quantBIC)
+	  oldoptwks <- -Inf
+	  wks2 <- wks - max(wks) -1
+	  probs <- wks2/sum(wks2)
+  } else {
+	  if(laplace || sparsity) {
+		  wks <- sapply(P, function(x) x$posterior)
+	  } else {
+		  wks <- sapply(P, function(x) x$L)
+	  }
+	  optwks <- quantile(wks,na.rm=T,probs=quantL)
+	  oldoptwks <- Inf
+	  wks2 <- wks + abs(min(wks)) +1
+	  probs <- wks2/sum(wks2)
+  }
+  
+  #####################
+  # main loop         #
+  #####################
+  p <- length(P)
+  diffpercent <- opts <- NULL
+  numequalscore <- 0
+  autoc <- list(acf=rep(0,5),n.used=10)
+  for(iter in 1:maxiterations) {
+	pdiff <- "x"
+	# terminate criterion: 50x equal optimal score, then return
+	if(oldoptwks==optwks) {
+		numequalscore <- numequalscore + 1
+		print(paste("No improvement in optimal score for ", numequalscore, " times."))
+		if(numequalscore==50) {
+			for(ii in 1:length(P)) {
+				P[[ii]][["iterations"]] <- iter
+			}
+			break
+		}
+	} else {
+		numequalscore <- 0
+	}
+	##new generation
+    Pprime <- list()
+    ################
+    # selection    #
+    ################
+	diffpercent <- c(diffpercent,abs(round(((min(wks) - mean(wks))/min(wks)*100), digits=3)))
+	opts <- c(opts, optwks)
+    print(paste("selection ",iter, "diff(opt,avg): ", diffpercent[length(diffpercent)], " Diffs in Opts==0? ", pdiff))
+	if(iter %% 10 == 0) {
+		if(!is.null(scorefile)) {
+			pdf(scorefile,width=8,height=10)			
+		}
+		layout(matrix(c(1,1,2,3,4,5), 3, 2, byrow = TRUE))
+		plot(opts, type='l', ylab="median scores", xlab="generation", main=paste("Score trace: min: ", round(min(opts),3), " max: ", round(max(opts),3)))
+		autoc <- acf(opts, main="Autocorrelation of median scores",ci.type="ma")
+		abline(h=-2*sqrt(autoc$n.used)/autoc$n.used,col="orange",lty=4)
+		abline(h=2*sqrt(autoc$n.used)/autoc$n.used,col="orange",lty=4)
+		pautoc <- pacf(opts, main="Partial autocorrelation of median scores")
+		abline(h=-2*sqrt(pautoc$n.used)/pautoc$n.used,col="orange",lty=4)
+		abline(h=2*sqrt(pautoc$n.used)/pautoc$n.used,col="orange",lty=4)
+		plot(diff(opts), type='b', ylab="differences avg scores (t-1 -> t)",xlab="generation i+1", pch="*")
+		plot(diffpercent, type='l', ylab="percent optimumscore - avgscore", xlab="generation",main=paste("optimum(minimum difference): ",min(diffpercent)))
+		if(!is.null(scorefile)) {
+			dev.off()	
+		}
+	}
+    # select only the better models, i.e. maximise the likelihoods
+	# or minimize bics
+	if(usebics) {
+		selection <- which(wks < optwks) # minimise the bic
+		if(length(selection)==0)
+			selection <- sample(which(wks==min(wks)),1)
+	} else {
+		selection <- which(wks > optwks) # maximise the L or posterior
+		if(length(selection)==0)
+			selection <- sample(which(wks==max(wks)),1)
+	}
+    # if selected too much, then sample from the possibilities
+	# with probability proportional to the score
+    if(length(selection)>ceiling((p*(1-q)))) {
+	  probs2 <- probs[selection]
+      selection <- sample(selection, ceiling((p*(1-q))), prob=probs2)
+    }
+	Pprime <- c(Pprime, P[selection])
+    # define barrier that must be exceeded in the next run
+	# optimum before crossover and mutation
+	if(usebics) {
+		print(paste("Selected: ", length(Pprime), " models with bic < ", oldoptwks, ". New minbic: ", optwks))
+	} else {
+		if(laplace || sparsity) {
+			print(paste("Selected: ", length(Pprime), " models with post > ", oldoptwks, ". New maxPosterior: ", optwks))
+		} else {
+			print(paste("Selected: ", length(Pprime), " models with L > ", oldoptwks, ". New maxL: ", optwks))
+		}
+	}
+	oldoptwks <- optwks
+	# get the number of crossovers
+    # size of population - already selected individuals
+    # i.e. perform crossover for all not selected individuals
+    numcrossings <- p - length(selection)
+    numcrossings <- (numcrossings - numcrossings%%2)
+
+    ##############
+    # crossover  #
+    ##############
+    print(paste("crossover",iter))
+	# sample randomly number of crossings individuals, i.e. numcrossings/2 pairs
+	# take preferrably the most fit individuals for crossingover
+    crossing <- matrix(sample(1:p, numcrossings, prob=probs, replace=FALSE), nrow=2)
+	# sampling with uniform prob
+	phicrosses <- list()
+	PP <- list()
+	# do all crossovers
+	counter <- 1
+    for(k in 1:ncol(crossing)) {
+      phicross <- crossover(P[[crossing[1,k]]]$phi, P[[crossing[2,k]]]$phi,fanin=fanin)
+	  if(length(which(colSums(ifelse(phicross[[1]]==0,0,1))>fanin))>0 |
+			  any(phicross[[1]][,unique(names(unlist(stimuli)))]!=0)) {
+		  print("**********  CROSS1: fanin too big somewhere or edge leading to stimulus")
+		  browser()
+	  }
+	  if(length(which(colSums(ifelse(phicross[[2]]==0,0,1))>fanin))>0 ||
+	  			any(phicross[[2]][,unique(names(unlist(stimuli)))]!=0)) {
+		  print("**********   CROSS2: fanin too big somewhere or edge leading to stimulus")
+		  browser()
+	  }
+  
+	  PP[[counter]] <- P[[crossing[1,k]]]
+	  PP[[counter]]$phi <- phicross[[1]]
+	  PP[[(counter+1)]] <- P[[crossing[2,k]]]
+	  PP[[(counter+1)]]$phi <- phicross[[2]]
+	  counter <- counter+2
+	}
+	if(multicores) {
+		ret <- mclapply(PP, function(x) perform.hmmsearch(x$phi, x), mc.preschedule=FALSE,mc.cores=cores)	
+  	} else {
+		ret <- lapply(PP, function(x) perform.hmmsearch(x$phi, x))	
+	}
+	for(k in 1:length(ret)) {
+		if(is.null(ret[[k]])){
+			cat("*!!*")
+			x <- PP[[k]]
+			xret <- perform.hmmsearch(x$phi,x)
+			ret[[k]] <- xret
+		}
+		bestmodel <- PP[[k]]
+		L.res <- ret[[k]]
+		bestmodel$gamma <- matrix(L.res$gammax,nrow=nrow(bestmodel$gamma),ncol=ncol(bestmodel$gamma),dimnames=dimnames(bestmodel$gamma))
+		bestmodel$theta <- matrix(L.res$thetax,nrow=nrow(bestmodel$theta),ncol=ncol(bestmodel$theta),dimnames=dimnames(bestmodel$theta))
+		bestmodel$L <- L.res$Likl
+		bestmodel$bic <- L.res$bic
+		bestmodel$aic <- L.res$aic
+		if(laplace || sparsity) {
+			bestmodel$posterior <- posterior(bestmodel$phi, bestmodel$L, lambda, B, Z, gam, it, K)
+		} else {
+			bestmodel$posterior <- NULL
+		}
+		bestmodel$gammaposs <- L.res$gammaposs
+		Pprime <- c(Pprime, list(bestmodel))
+	}
+
+	#Pprime <- c(Pprime, PP)
+ 	# if new generation is smaller than old one, add some unchanged individuals
+    if(length(Pprime)<p) {
+      rest <- sample(setdiff(1:p, union(selection, as.vector(crossing))),(p-length(Pprime)))
+      Pprime <- c(Pprime, P[rest])
+    }
+	## now i have changed individuals, get the scores again
+	if(usebics) {
+		wks <- sapply(Pprime, function(x) x$bic)
+		wks2 <- wks - max(wks) -1
+		probs <- wks2/sum(wks2)
+		optwks <- quantile(wks,na.rm=T,probs=quantBIC)
+	} else {
+		# maximize over posterior if prior is given
+		if(laplace || sparsity) {
+			wks <- sapply(Pprime, function(x) x$posterior)
+		} else {
+			wks <- sapply(Pprime, function(x) x$L)
+		}
+		wks2 <- wks + abs(min(wks)) +1
+		probs <- wks2/sum(wks2)
+		optwks <- quantile(wks,na.rm=T,probs=quantL)
+	}
+	
+    ##############
+    # mutation   #
+    ##############
+	# mutate p*m individuals
+    # select the individuals proportional to their likelihood?
+    #mutation <- sample(1:p, (p*m), prob=(1-probs)) ## mutate the worst ones
+	mutation <- sample(1:p, (p*m), prob=probs) ## mutate the best ones
+    print(paste("mutation",iter))
+	counter <- 1
+	oldphis <- list()
+	oldedges <- newedges <- NULL
+	for(k in mutation) {
+		phitmp <- Pprime[[k]]$phi
+		oldphis[[counter]] <- phitmp
+		# take care of fanin
+		out <- which(colSums(ifelse(phitmp==0,0,1))>=fanin)
+		diag(phitmp) <- -1	
+		phitmp[,unique(names(unlist(stimuli)))] <- matrix(-1,nrow=nrow(dat),ncol=length(unique(unlist(stimuli))))
+		fout <- which(which(phitmp==0,arr.ind=TRUE)[,2]%in%out)
+		phitmp[which(phitmp==0)[fout]] <- -1
+		position <- sample(which(phitmp!=-1),1) # select the position
+		types <- setdiff(c(0,1,2),phitmp[position])
+		type <- sample(types, 1) # select the type of the edge to which it will mutate
+		phi.n <- Pprime[[k]]$phi
+		oldedges <- c(oldedges, phi.n[position])
+		newedges <- c(newedges, type)
+		phi.n[position] <- type
+		if(length(which(colSums(ifelse(phi.n==0,0,1))>fanin))>0 ||
+				any(phi.n[,unique(names(unlist(stimuli)))]!=0)) {
+			print("********** MUTATION! fanin too big somewhere or edge leading to stimulus...")
+			browser()
+		}
+		Pprime[[k]]$phi <- phi.n
+		counter <- counter + 1
+	}
+	cat("performing ", length(mutation), " mutations..")
+	if(multicores) {
+		ret <- mclapply(Pprime[mutation], function(x){perform.hmmsearch(x$phi, x)}, mc.preschedule=FALSE,mc.cores=cores)	
+	} else {
+			ret <- lapply(Pprime[mutation], function(x) perform.hmmsearch(x$phi, x))	
+	}
+	## fang ab, dass manchmal leere Werte zurueckgegeben werden, warum???
+	for(k in 1:length(ret)) {
+		if(is.null(ret[[k]])){
+			cat("*!*")
+			x <- Pprime[mutation][[k]]
+			xret <- perform.hmmsearch(x$phi,x)
+			ret[[k]] <- xret
+		}
+		## here the mutated network is already contained
+		bestmodel <- Pprime[[mutation[k]]]
+		L.res <- ret[[k]]
+		posteriornew <- NULL
+		if(usebics) {
+			scorenew <- -L.res$bic
+			scoreold <- -optwks
+		} else {
+			if(laplace || sparsity) {
+				posteriornew <- posterior(bestmodel$phi, L.res$Likl, lambda, B, Z, gam, it, K)
+				scorenew <- posteriornew
+				scoreold <- optwks
+			} else {
+				scorenew <- L.res$Likl
+				scoreold <- optwks
+			}
+		}
+		# if score is better, than accept the new parameters, state matrix etc.
+		if(scorenew > scoreold) {
+			print(paste("Improved score by mutation: old edge: ", oldedges[k], " new edge: ",newedges[k], "oldscore: ", scoreold, "newscore: ", scorenew))
+			bestmodel$gamma <- matrix(L.res$gammax,nrow=nrow(bestmodel$gamma),ncol=ncol(bestmodel$gamma),dimnames=dimnames(bestmodel$gamma))
+			bestmodel$theta <- matrix(L.res$thetax,nrow=nrow(bestmodel$theta),ncol=ncol(bestmodel$theta),dimnames=dimnames(bestmodel$theta))
+			bestmodel$L <- L.res$Likl
+			bestmodel$bic <- L.res$bic
+			bestmodel$aic <- L.res$aic
+			bestmodel$posterior <- posteriornew
+			bestmodel$gammaposs <- L.res$gammaposs
+		} else {
+			# else restore the old network; parameters and matrices are still the old ones
+			bestmodel$phi <- oldphis[[k]]
+		}
+		Pprime[[mutation[k]]] <- bestmodel
+	}
+	if(usebics) {
+		wks <- sapply(Pprime, function(x) x$bic)
+		wks2 <- wks - max(wks) -1
+		probs <- wks2/sum(wks2)
+		optwks <- quantile(wks,na.rm=T,probs=quantBIC)
+	} else {
+		# maximize over posterior if prior is given
+		if(laplace || sparsity) {
+			wks <- sapply(Pprime, function(x) x$posterior)	
+		} else {
+			wks <- sapply(Pprime, function(x) x$L)
+		}
+		wks2 <- wks + abs(min(wks)) +1
+		probs <- wks2/sum(wks2)
+		optwks <- quantile(wks,na.rm=T,probs=quantL)
+	}
+    P <- Pprime
+	garbage <- gc(verbose=FALSE)
+  } # end main loop
+  return(P)
+}

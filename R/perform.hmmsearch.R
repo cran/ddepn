@@ -34,14 +34,11 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 	hmmiterations <- bestmodel$hmmiterations
 	gamprimetotal <- NULL
 	gamposstotal <- NULL
-	# separates HMM für jedes experiment, also jeden stimulus
+	# separates HMM fï¿½r jedes experiment, also jeden stimulus
 	for(s in stimuli) {
 		exind <- grep(paste("^",paste(names(s), collapse="&"),"_[0-9]*$",sep=""),colnames(dat))
 		R <- length(exind)/length(tps)
 		datx <- dat[,exind]
-		#longprop <- 1:max(length(tps),(nrow(phi.n)*100)) # set high maximum number of propagation steps
-		#gammaposs <- uniquegammaposs(propagate.effect.set(phi.n,longprop,list(s),reps=R))
-		#gammaposs <- propagate.effect.set(phi.n,stimuli)
 		gammaposs <- propagate.effect.simple(phi.n,stimulus=s,stimuli=stimuli)
 		colnames(gammaposs) <- paste(paste(names(s),collapse="&"), colnames(gammaposs), sep="_")
 		V <- rownames(datx)
@@ -56,9 +53,7 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 		pseudocount <- 1
 		pseudocountsum <- M
 		A <- log2(A)
-		### pseudocounts brauch ich die??? 
-		###rkl <- matrix(1,nrow=M,ncol=M,dimnames=list(Adimn,Adimn))
-		## initial gamprime: dimensions: 
+		## initial gamprime 
 		#gamprime <- array(rep(gammaposs[,sort(sample(M,T,replace=TRUE))],R), dim=c(N, T, R), dimnames=list(V, TC, 1:R))
 		gamprime <- replicatecolumns(gammaposs[,sort(sample(M,T,replace=TRUE))],R)
 		## initial theta
@@ -86,7 +81,6 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 					# restart if switching behaviour occurs,
 					# don't know where this comes from
 					if(equally == 3) {
-						#print(paste("####Switching between two local optima, restart.Diff: ",diff))
 						restarts <- restarts + 1
 						# only up to 5 restarts
 						if(restarts < 5){
@@ -141,7 +135,7 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 			sel <- cbind(1:length(maxima.ind),2:(length(maxima.ind)+1))
 			## transitions hold the switchings from state i to state j in the state sequence
 			transitions <- matrix(maxima.ind[sel],ncol=2)
-			## hier aendere ich nur die übergangswahrscheinlichkeiten, die auch gesehen wurden
+			## hier aendere ich nur die ï¿½bergangswahrscheinlichkeiten, die auch gesehen wurden
 			trans <- table(transitions[-nrow(transitions),1])
 			transall <- table(paste(transitions[-nrow(transitions),1], transitions[-nrow(transitions),2], sep="_"))		
 			ind <- match(as.numeric(sapply(names(transall), function(x) strsplit(x, split="_")[[1]][1])),as.numeric(names(trans)))	
@@ -155,7 +149,6 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 		gamprimetotal <- cbind(gamprimetotal, gamprime)
 		gamposstotal <- cbind(gamposstotal, gammaposs)
 	}
-	browser()
 	Liktmp <- likl(dat,gamprimetotal)
 	Lik <- Liktmp$L
 	thetaprime <- Liktmp$theta

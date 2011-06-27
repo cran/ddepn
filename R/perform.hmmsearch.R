@@ -23,7 +23,9 @@ replicatecolumns <- function(mat, replicates=4) {
 
 perform.hmmsearch <- function(phi.n, bestmodel) {
 	## select implementation
-	implementation <- get("IMPLEMENTATION", pos=globalenv())
+	env <- get("envDDEPN")
+    implementation <- get("IMPLEMENTATION", envir=env)
+	#implementation <- get("IMPLEMENTATION", pos=globalenv())
 	## do this only until different number of timepoints  
 	## in each experiment is implemented in C
 	#if(class(bestmodel$tps)=="list")

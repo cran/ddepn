@@ -19,7 +19,7 @@ signalnetwork <- function(n=10, nstim=2, cstim=0, prop.inh=.2,plot=F,gamma=1,B=N
 		V <- paste("X",1:n,sep="")
 	phi <- matrix(0,nrow=n, ncol=n, dimnames=list(V,V))
 	if(is.null(stimuli)) {
-		stim <- sample(1:n, nstim)
+		stim <- sort(sample(1:n, nstim))
 		names(stim) <- V[stim]
 		stimuli <- list()
 		for(i in 1:length(stim)) {
@@ -85,7 +85,7 @@ signalnetwork <- function(n=10, nstim=2, cstim=0, prop.inh=.2,plot=F,gamma=1,B=N
 				degprob = degprob/sum(degprob)
 			}
 			while(1==1) {
-				cat("-")
+				#cat("-")
 				newedges <- NULL
 				for(dp in 1:length(tosample)) {
 					et <- sample(c(0,1), 1, prob=c((1-degprob[dp]), degprob[dp]))

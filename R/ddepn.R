@@ -19,22 +19,29 @@
 
 ddepn <- function(dat, phiorig=NULL, phi=NULL, th=0.8, inference="netga", outfile=NULL,
                   multicores=FALSE, maxiterations=1000, p=500, q=0.3, m=0.8, P=NULL,
-				  usebics=TRUE, cores=2, 
+				  usebics=TRUE, cores=1, 
 				  priortype="laplaceinhib",
 				  lambda=NULL, B=NULL, samplelambda=NULL,
 				  hmmiterations=100, fanin=4,
 				  gam=NULL,it=NULL,K=NULL,quantL=.5,quantBIC=.5,
 				  debug=0,burnin=500, thin=FALSE, plotresults=TRUE,
-				  always_sample_sf=FALSE,scale_lik=FALSE,allow.stim.off=FALSE) {
+				  always_sample_sf=FALSE,scale_lik=FALSE,allow.stim.off=FALSE,
+				  implementation="C") {
+	## deal with missing replicates
+	## make pad of NA columns for missing replicates
+	dat <- pad_data(dat)
+	## order the new matrix
+	dat <- order_experiments(dat)		  
 	# get the experiments, i.e. the stimuli/inhibitor combinations
 	# works if format of dat is like:
 	# colnames contain the experiments in form STIMULUS_time
 	cols <- colnames(dat)
 	tmp <- sapply(cols, function(x) strsplit(x,"_")[[1]])
 	## check if number of time points is the same across all experiments
-	if(length(unique(table(tmp[2,])))!=1) {
-		stop("ERROR: Found differing number of time points across experiments.")
-	}
+	## should be possible now
+#	if(length(unique(table(tmp[2,])))!=1) {
+#		stop("ERROR: Found differing number of time points across experiments.")
+#	}
 	## check if samplelambda is either numeric or NULL
 	if(!(mode(samplelambda)=="numeric" | is.null(samplelambda))) {
 		stop("ERROR: Please specify argument samplelambda either as numeric value or NULL.")	
@@ -79,8 +86,14 @@ ddepn <- function(dat, phiorig=NULL, phi=NULL, th=0.8, inference="netga", outfil
 				stop("Error: please provide either a list of or a single seed network in argument phi, or leave it as NULL.")
 			}
 			#V <- rownames(dat)
-			tps <- unique(sapply(cols, function(x) strsplit(x,"_")[[1]][2]))
-			reps <- table(sub("_[0-9].*$","",cols)) / length(tps)
+			ordstim <- sapply(stimuli, function(x) paste(names(x),collapse="&"))
+			tmp <- tapply(colnames(dat), gsub("_.*$","",colnames(dat)), get_reps_tps)
+			tmp <- tmp[ordstim]
+			tps <- lapply(tmp, function(x) x$tps)
+			reps <- unique(sapply(tmp, function(x) as.numeric(x$reps)))
+			if(length(reps)>1) {
+				stop("Number of replicates differ in the experiments. Please add columns containing NAs to obtain equal number of replicates.")
+			}
 			X <- vector("list",p)
 			for(i in 1:p) {
 				X[[i]] <- phi[[i]]
@@ -148,6 +161,9 @@ ddepn <- function(dat, phiorig=NULL, phi=NULL, th=0.8, inference="netga", outfil
 	#if(samplelambda=="integrate") {
 	#	lambda <- NA
 	#}
+	## assign global variable IMPLEMENTATION
+	assign("IMPLEMENTATION", implementation, .GlobalEnv)
+	
 	## if GA should be used
 	if(inference=="netga") {
 		if(!is.null(outfile)) {
@@ -267,13 +283,22 @@ ddepn <- function(dat, phiorig=NULL, phi=NULL, th=0.8, inference="netga", outfil
 				pdf(outfile,onefile=TRUE)
 			}
 			if(plotresults) {
+				if(is.null(outfile))
+					x11()
+				## find a suitable plot layout with little empty segments
+				nplots <- length(retlist)+1
+				mfdim1 <- mfdim2 <- ceiling(sqrt(nplots))
+				if((mfdim1*mfdim2 - nplots) > mfdim1) {
+					mfdim2 <- mfdim2 - 1
+				} 
+				par(mfrow=c(mfdim1,mfdim2))
 				plot(as.numeric(rownames(ltraces)),ltraces[,1],type="l",xlab="iteration",ylab="Score",ylim=range(ltraces,na.rm=TRUE),col=colors[1],main="Score traces")
 				if(ncol(ltraces)>1)
 					sapply(2:ncol(ltraces), function(j,ltraces,colors) lines(as.numeric(rownames(ltraces)),ltraces[,j],col=colors[j]), ltraces=ltraces, colors=colors)
 				## get the final network from all cores inferences and plot
 				for(netnr in 1:length(retlist)) {
 					ret2 <- retlist[[netnr]]
-					plotdetailed(ret2$phi,stimuli=ret2$stimuli,weights=ret2$weights)
+					plotdetailed(ret2$phi,stimuli=ret2$stimuli,weights=ret2$weights, main=paste("MCMC run", netnr))
 				}
 			}
 			if(!is.null(outfile))
@@ -284,7 +309,8 @@ ddepn <- function(dat, phiorig=NULL, phi=NULL, th=0.8, inference="netga", outfil
 }
 
 ## uses a returned object from netga or inhibMCMC and resumes the sampling/optimisation
-resume_ddepn <- function(ret,maxiterations=10000,outfile=NULL,th=0.8,plotresults=TRUE,debug=0,cores=NULL) {
+resume_ddepn <- function(ret,maxiterations=10000,outfile=NULL,th=0.8,plotresults=TRUE,debug=0,cores=NULL, implementation="C", thin=FALSE) {
+	assign("IMPLEMENTATION", implementation, .GlobalEnv)
 	## close all x11 connections
 	graphics.off()
 	if(is.null(ret$samplings)) {

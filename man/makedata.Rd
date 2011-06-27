@@ -7,7 +7,8 @@ Generate artificial dataset given a network and list of stimuli.
 Dataset generation using an input network, list of stimuli and various experiment parameters.
 }
 \usage{
-makedata(phi, stimuli, R.t = 3, R.b = 3, TT = 10, mu.bg = 0, sd.bg = 0.1, mu.signal.a = 2, sd.signal.a = 0.5, mu.signal.i = -2, sd.signal.i = 0.5)
+makedata(phi, stimuli, R.t = 3, R.b = 3, TT = 10, mu.bg = 0, sd.bg = 0.1, mu.signal.a = 2, sd.signal.a = 0.5, mu.signal.i = -2, sd.signal.i = 0.5,
+  allow.stim.off = FALSE)
 }
 \arguments{
   \item{phi}{Adjacency matrix.The input network.
@@ -15,12 +16,16 @@ makedata(phi, stimuli, R.t = 3, R.b = 3, TT = 10, mu.bg = 0, sd.bg = 0.1, mu.sig
   \item{stimuli}{List containing all stimuli.
   }
   \item{R.t}{Integer. Number of technical replicates. So far, no distinction is done between technical and 
-    biological replicates, so in total a number of \eqn{R.t \cdot R.b} replicates is generated. 
+    biological replicates, so in total a number of \eqn{R.t \cdot R.b} replicates is generated. If given as vector 
+    of length equal to the length of \code{stimuli}, then each element denotes the numbers of replicates in 
+    each experiment, denoted by the corresponding element in \code{stimuli}.
   }
   \item{R.b}{Integer. Number of biological replicates. So far, no distinction is done between technical and 
-    biological replicates, so in total a number of \eqn{R.t \cdot R.b} replicates is generated.
+    biological replicates, so in total a number of \eqn{R.t \cdot R.b} replicates is generated. Can also be given 
+    as vector, with the same effect as for \code{R.t}.
   }
-  \item{TT}{Integer.Number of timepoints in the experiment.
+  \item{TT}{Integer.Number of timepoints in the experiment. Analogously to \code{R.t} and \code{R.b}, can be 
+    given as vector, denoting the numbers of time points in each separate experiment.
   }
   \item{mu.bg}{Double. Mean background intensity (for passive state of the protein.
   }
@@ -34,6 +39,8 @@ makedata(phi, stimuli, R.t = 3, R.b = 3, TT = 10, mu.bg = 0, sd.bg = 0.1, mu.sig
   }
   \item{sd.signal.i}{Double. Sd for inhibition intensity.
   }
+  \item{allow.stim.off}{Boolean. If TRUE, a stimulus can become inactive at some 
+    time point, if FALSE, the stimulus will be always active.}
 }
 \details{
 Generates a dataset from the given network, stimuli and parameters.

@@ -15,14 +15,15 @@ Main function for DDEPN modelling. Takes a data matrix containing
 ddepn(dat, phiorig=NULL, phi=NULL, th=0.8, inference="netga",
       outfile=NULL, multicores=FALSE, maxiterations=1000,
       p=500, q=0.3, m=0.8, P=NULL,
-      usebics=TRUE, cores=2, priortype="laplaceinhib",
+      usebics=TRUE, cores=1, priortype="laplaceinhib",
       lambda=NULL, B=NULL, samplelambda=NULL,
       hmmiterations=100, fanin=4,
       gam=NULL,it=NULL,K=NULL,quantL=.5,quantBIC=.5,
       debug=0, burnin=500, thin=FALSE, plotresults=TRUE,
-      always_sample_sf=FALSE, scale_lik=FALSE, allow.stim.off=FALSE)
+      always_sample_sf=FALSE, scale_lik=FALSE, allow.stim.off=FALSE, implementation="C")
       
-resume_ddepn(ret,maxiterations=10000,outfile=NULL,th=0.8,plotresults=TRUE,debug=0,cores=NULL)
+resume_ddepn(ret,maxiterations=10000,outfile=NULL,th=0.8,plotresults=TRUE,debug=0,cores=NULL,
+      implementation="C", thin=FALSE)
 
 }
 \arguments{
@@ -127,14 +128,19 @@ resume_ddepn(ret,maxiterations=10000,outfile=NULL,th=0.8,plotresults=TRUE,debug=
     the propagation, but with the stimulus node set to 0.}
   \item{ret}{List. The output generated during an \code{\link{netga}} or \code{\link{mcmc_ddepn}} run. Used
     in function \code{resume_ddepn} to resume the inference.}
+  \item{implementation}{String. One of \code{"C","R","R_globalest","C_globalest"}. Different implementations of the HMM in 
+    \code{\link{perform.hmmsearch}}. If \code{"R"}, the original pure R-implementation is 
+    used, if \code{"C"}, a ported C-implementation is used. If \code{"R_globalest"}, an experimental version of
+    the parameter estimation is used in the HMM, \code{"C_globalest"} is the C-port of 
+    this version. See \code{details} for a description.}
 }
 \details{
   \describe{
     \item{dat}{
       Data matrix. Rows correspond to measured proteins/genes etc.
       Columns contain all experiments, i.e. separate perturbations.
-      Each experiment consists of T time points and each time point is
-      assumed to be measured in R replicates. The time is indicated as a
+      Each experiment \code{i} consists of \code{T_i} time points and each time point is
+      assumed to be measured in \code{R_i} replicates. The time is indicated as a
       numeric value, separated by an underscore in the column name.
       Example:
       \tabular{lcccccccc}{
@@ -147,9 +153,20 @@ resume_ddepn(ret,maxiterations=10000,outfile=NULL,th=0.8,plotresults=TRUE,debug=
       }
       For example, \code{EGF_1} means EGF treatment at time 1, \code{EGF&X_2} means simultaneous treatment with EGF and X at time 2
       etc. One could use function \code{\link{addstimuli}} to automatically add the additional rows for the 
-      treatments to the data matrix, if they are not present. See the vignette for more details on the format 
-      of the data matrix.
+      treatments to the data matrix, if they are not present. Unequal numbers of time points and replicates are allowed 
+      for each experiment. See the vignette for more details on the format of the data matrix.
     }
+    \item{implementation}{Several implementations are provided, differing in the way that the Gaussian parameters are 
+      estimated in the HMM. The \code{"R"} and \code{"C"} implementations derive separate optimal state matrices
+      for each provided experiment. The state matrices are then concatenated to estimate the Gaussians. An alternative 
+      experimental implementation \code{"R_globalest"} is available, which derives a single state matrix for all experiments 
+      in the HMM. For separate derivation, the corresponding gaussians for each experiment can be rather different, 
+      leading to rather inhomogeneous parameter estimates with large variances. Using only one HMM for all experiments
+      overcomes this problem, since the states are chosen with respect to all experiments. However, deriving the combined 
+      state matrix leads to higher number of possible system states to be regarded in the viterbi algorithm, and this will slow down
+      the HMM. The default is to use \code{"C"} with a reasonable trade off of quality and speed.}
+      %Because of the presumably better parameter estimation the global estimation paradigm is used (C_globalest). However, 
+      %the faster \code{"C"} implementation can still be used, if shorter computation times are desired.}
   }
 }
 \value{

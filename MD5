@@ -1,6 +1,7 @@
-e114d2199a28871dd16e1b7c5f2173e8 *DESCRIPTION
+29fa313a5e720a2860f3cf241c1c11d5 *DESCRIPTION
 8a768684be045b82c2967b610e177484 *NAMESPACE
 463d63fed3387911a5b18d9acfbddc11 *R/addstimuli.R
+984c7fd499ef7d504a986b51fead8f84 *R/adjacencyMatrix_to_logicalRules.R
 e30ec302ebcbfe8687aad3962f1061cc *R/bestgam.R
 8a8d927f03defd83b17412dda28864f2 *R/center_ddepn.R
 234b7ab219c076b44657677d6ca10020 *R/compare.graphs.R
@@ -17,7 +18,7 @@ d1149747c44f8f3d77d3312d949b3c54 *R/ddepn.R
 de51ca3a9a66df5c0683298af37593de *R/likl.R
 684fcf23ec501ebacecb0e915c89a7fc *R/makedata.R
 64c55d4084f92564361b948f458523b9 *R/mcmc_accept.R
-3c131f9bb0b72d82b27971009462ed81 *R/mcmc_ddepn.R
+bf93e71f641e377d04691dad3127c5f5 *R/mcmc_ddepn.R
 0216a68b638506253e8f693eae675b3c *R/mcmc_move.R
 61ad369d58f313ef5b297058e2c4319c *R/mcmc_performance.R
 3df15c22968e84ea0acda5dec0e2da4e *R/modelcomparison.R
@@ -25,7 +26,7 @@ de51ca3a9a66df5c0683298af37593de *R/likl.R
 1e4a08439df27e99bf4c8edbc64ee33e *R/perform.hmmsearch.R
 8fc0b3338e584347b2527c7ccb6303b2 *R/plot_edgeconfidences.R
 943cf9d71cef040dd40dd24333da2aea *R/plot_mcmctraces.R
-2ad516e7b1fb560a60629217deddab85 *R/plot_profiles.R
+305af39ac5a1124cac227d2580bc5b8c *R/plot_profiles.R
 0d87639597f3254d43191b4da3d3d267 *R/plotdetailed.R
 547e93ec6388e562a5090c13a40d0966 *R/plotdetailed_Rgraphviz.R
 d8b684d5dd145b5c99ca31a621f59f07 *R/plotrepresult.R
@@ -39,12 +40,12 @@ c1c3853c72ab0e7e533768e40605a3a6 *R/samplephi.R
 db551261b38602b7de4ac44618d441d0 *R/simulatedata.R
 ea148b77e0d82f2c1cc4613238c6c1b1 *R/uniquegamma.R
 45836a5ea72a4b965dfb2486ac7a4513 *R/zlambda.R
-46a8c42eaa5de8933e9f95b2c06cae5d *data/hcc1954.RData
-d1061e5cebd5c645d03939edb6100f4c *data/hcc1954raw.RData
-cb0fcdae4ba73cea80e40d48b71fae7a *data/kegggraphs.RData
+2542470163e497de523ec39587174bfb *data/hcc1954.RData
+856570cf175acccdc4591dc0339162e1 *data/hcc1954raw.RData
+7fa0ab0e133acb54969c2b70f75acd45 *data/kegggraphs.RData
 d2aaa7beb1be7b2f131c0eb9a54e06dc *inst/doc/OLDmcmcoutput.pdf
 e1df8b87b3a1c84abfe85c56f6a668ef *inst/doc/ddepn.Rnw
-98808ef2d4fce1d08b9dae774afeb803 *inst/doc/ddepn.pdf
+6e6e9da4a5b6479dc303094ebf27bb1e *inst/doc/ddepn.pdf
 a48a34114d5f95a9a90458079f0430dd *inst/doc/examplenet.pdf
 d8eededaa2f967764284dfd5e6ab319a *inst/doc/mcmcedgeconf.pdf
 a0deba3545158ba16e4545c0d7fefdec *inst/doc/mcmcoutput.pdf
@@ -57,6 +58,7 @@ dd1a3a40b0f06598e94f5eea932f8f78 *inst/doc/netmcmcresult.pdf
 285d468031869ca598b7d5334890749d *inst/doc/references.bib
 413da9e3a2f2b7a8d62ef0e091107d84 *inst/doc/scorenetgatest.pdf
 a4448a7e7c19869b3163b6fde94972b9 *man/addstimuli.Rd
+16062566af9343a6934c60dc04cc32b1 *man/adjacencyMatrix_to_logicalRules.Rd
 e2c03ec48caec3f1615eb5788624a155 *man/bestgam.Rd
 18f4062d56003b2739db9d73fd90d2e5 *man/center_ddepn.Rd
 79627c68e76522f8668583da88d1467f *man/compare.graphs.Rd

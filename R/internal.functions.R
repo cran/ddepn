@@ -9,7 +9,7 @@ get_reps_tps <- function(nx) {
 	tpsx <- unique(sapply(nx, function(xx) strsplit(xx,"_")[[1]][2]))
 	r1 <- table(sub("_[0-9].*$","",nx)) / length(tpsx)
 	list(tps=tpsx, reps=r1)
-}
+} 
 
 ## make a pad of NA columns, whenever there are unequal numbers of replicates 
 pad_data <- function(dat) {
@@ -32,7 +32,7 @@ order_experiments <- function(dat) {
 	#ord <- order(exper, timep, brepl)
 	s1 <- gsub("_.*$","",colnames(dat))
 	s2 <- gsub("^.*_","",colnames(dat))
-	ord <- order(s1, s2)
+	ord <- order(s1, as.numeric(s2))
 	dat <- dat[,ord]
 	dat
 }
@@ -241,7 +241,7 @@ tp.median <- function(dat) {
 	}
 	colnames(dat.m) <- levs
 	return(dat.m)
-}
+} 
 
 # transform multiple edge types to only one edge type
 detailed.to.simple.regulations <- function(phi) {

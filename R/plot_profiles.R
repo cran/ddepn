@@ -122,8 +122,9 @@ plot_profiles <- function(ret, log=FALSE, ord=NULL,
 	## Spline fits and plots through the data for each protein
 	for(j in 1:nrow(dat)) {
 		print(rownames(dat)[j])
-		if(j %in% stimuli)
+		if(j %in% stimuli || sum(is.na(dat[j,]))==length(dat[j,])){
 			next
+		}
 		if(cnt %% (mfrow[1]*mfrow[2]) == 1)
 			par(mfrow=mfrow) #min(6,length(expers.fac))))
 		cnt <- cnt + 1
@@ -140,7 +141,7 @@ plot_profiles <- function(ret, log=FALSE, ord=NULL,
 			y <- y[ord]
 			tp <- tp[ord]
 			## make a fit through the data points 
-			if(all(y==-Inf) || all(y==0) || all(is.na(y))){
+			if(all(y==-Inf) || all(na.omit(y)==0) || all(is.na(y))){
 				pred <- rep(median(dat,na.rm=TRUE), length(xn))
 			} else {
 				pred <- bestgam(y,tp,xn,selection.criterion=selection.criterion)
@@ -204,8 +205,9 @@ plot_profiles <- function(ret, log=FALSE, ord=NULL,
 	## should the histograms be plotted?
 	if(plothist) {
 		for(j in 1:nrow(dat)) {
-			if(j %in% stimuli)
+			if(j %in% stimuli || sum(is.na(dat[j,]))==length(dat[j,])){
 				next
+			}
 			#if(cnt %% 9 == 1)
 			#	par(mfrow=mfrow)
 			cnt <- cnt + 1

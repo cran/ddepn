@@ -4,12 +4,13 @@
 ###############################################################################
 
 
-mcmc_accept <- function(bestmodel, bettermodels, newlambda) {
+mcmc_accept <- function(bestmodel, bettermodels, newlambda, debug=0) {
 	lambda <- bestmodel$lambda
 	B <- bestmodel$B
 	Z <- bestmodel$Z
 	gam <- bestmodel$gam
 	it <- bestmodel$it
+	iter <- bestmodel$iter
 	K <- bestmodel$K
 	priortype <- bestmodel$priortype
 	scalefac <- bestmodel$scalefac #0.005
@@ -51,30 +52,29 @@ mcmc_accept <- function(bestmodel, bettermodels, newlambda) {
 				revswitch=type.txt<-"revswitch")
 		## getting better
 		if(bestmodel$posterior < bestproposal$posterior) {
-			m <- paste("+++", type.txt, " MAP old/new: ", signif(pold,digits=7), " / ", signif(pnew,digits=7), " acpt: ", round(acpt,digits=5))
+			m <- paste("Iteration: ",iter, " [Accept] Improve ", type.txt)
 		} else { ## getting worse
-			m <- paste(type.txt, " MAP old/new: ", signif(pold,digits=7), " / ", signif(pnew,digits=7), " acpt: ", round(acpt,digits=5))
+			m <- paste("Iteration: ",iter, " [Accept] Subopt  ", type.txt)		
 		}
 	} else {
 		## if not taken, keep everything as it is.
 		bestproposal <- bestmodel
-		m <- paste("MAP old/new: ", signif(pold,digits=7), " / ", signif(pnew,digits=7), " acpt: ", round(acpt,digits=5))
+		m <- paste("Iteration: ",iter, " [Reject]         ")
 	}
+	if(debug==1)
+		m <- paste(m, " MAP old/new: ", signif(pold,digits=7), " / ", signif(pnew,digits=7))
+	if(debug==2)
+		m <- paste(m, " MAP old/new: ", signif(pold,digits=7), " / ", signif(pnew,digits=7), " acpt: ", round(acpt,digits=3))
 	## acceptance newlambda
 	if(priortype %in% c("laplaceinhib","laplace","uniform")) {
 		pnew <- posterior(bestproposal$phi, bestproposal$L, newlambda, B, Z, gam, it, K, priortype) #/ scalefac	
 	} else if(priortype=="scalefree") {
 		pnew <- posterior(bestproposal$phi, bestproposal$L, NULL, B, Z, newlambda, it, K, priortype) #/ scalefac
 	}
-	
 	## posterior ratio for newlambda
 	postratio2 <- pnew - pold
 	## acceptance ratio for newlambda
 	lacpt <- min(exp(scalefac*postratio2), 1)
-	
-	## update the output message
-	m <- paste(m, " lacpt: ", round(lacpt,digits=5), "MAP ratio:",signif(postratio,digits=3), "Prior ratio:", signif(prratio,digits=3))
-
 	## take newlambda or not
 	takeit <- sample(c(0,1),1,prob=c((1-lacpt),lacpt))
 	if(takeit==1) {
@@ -85,13 +85,18 @@ mcmc_accept <- function(bestmodel, bettermodels, newlambda) {
 		}
 		bestproposal$posterior <- pnew
 	}
-	if(priortype %in% c("laplaceinhib","laplace","uniform")) {
-		m <- paste(m, " lambda: ", bestproposal$lambda)
-	} else if(priortype=="scalefree") {
-		m <- paste(m, " gam: ", bestproposal$gam)
+	if(debug==2) {
+		m <- paste(m, " lacpt: ", round(lacpt,digits=3), "MAP ratio:",signif(postratio,digits=3), "Prior ratio:", signif(prratio,digits=3))
+		if(priortype %in% c("laplaceinhib","laplace","uniform")) {
+			m <- paste(m, " lambda: ", bestproposal$lambda)
+		} else if(priortype=="scalefree") {
+			m <- paste(m, " gam: ", bestproposal$gam)
+		}
+		m <- paste(m, " scale: ",scalefac,sep="")
 	}
-	m <- paste(m, " scale: ",scalefac,sep="")
-	print(m)
+	if(debug==1 & iter%%10==1 | debug==2)
+	#if(debug!=0)
+		print(m)
 	return(list(bestproposal=bestproposal, acpt=acpt, lacpt=lacpt))
 }
 

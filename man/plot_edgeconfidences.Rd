@@ -9,7 +9,7 @@ Boxplots of edge confidences obtained in inhibMCMC.
 Plot the confidences for each edge, obtained from \emph{L} independent MCMC chains.
 }
 \usage{
-plot_edgeconfidences(ret, start = 1, stop = NULL, act = "conf.act", inh = "conf.inh", ...)
+plot_edgeconfidences(ret, start = 1, stop = NULL, act = "conf.act", inh = "conf.inh", cex.axis = 1.5, ...)
 
 make_edge_df(samp)
 }
@@ -38,9 +38,13 @@ make_edge_df(samp)
   \item{samp}{
     List. Contains the sampling runs from each MCMC chain. Note that the number of chains \eqn{L:=length(samp)}.
 }
+  \item{cex.axis}{
+    Numeric. Scale factor for the axis labels.
+}
   \item{\dots}{
     Further plotting options passed to the lattice \code{panel.bwplot} function.
 }
+
 }
 \details{
 Create a summary plot of edge confidences or counts over \emph{L} MCMC runs. Assume that \emph{N} is the number 

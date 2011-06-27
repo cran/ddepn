@@ -27,12 +27,13 @@ replicatecolumns <- function(mat, replicates=4) {
 ### A: M x M matrix: Transition matrix
 ### viterbi: M x T matrix: which path to take
 perform.hmmsearch <- function(phi.n, bestmodel) {
-	cat(".")
+	#cat(".")
 	tps <- bestmodel$tps
 	stimuli <- bestmodel$stimuli
 	dat <- bestmodel$dat
 	hmmiterations <- bestmodel$hmmiterations
 	scale_lik <- bestmodel$scale_lik
+	allow.stim.off <- bestmodel$allow.stim.off
 	gamprimetotal <- NULL
 	gamposstotal <- NULL
 	# separate HMM for each experiment, i.e. each stimulus
@@ -40,7 +41,7 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 		exind <- grep(paste("^",paste(names(s), collapse="&"),"_[0-9]*$",sep=""),colnames(dat))
 		R <- length(exind)/length(tps)
 		datx <- dat[,exind]
-		gammaposs <- propagate.effect.simple(phi.n,stimulus=s,stimuli=stimuli)
+		gammaposs <- propagate.effect.simple(phi.n,stimulus=s,stimuli=stimuli,allow.stim.off=allow.stim.off)
 		colnames(gammaposs) <- paste(paste(names(s),collapse="&"), colnames(gammaposs), sep="_")
 		V <- rownames(datx)
 		TC <- unique(colnames(datx))
@@ -53,7 +54,8 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 		#A <- matrix((1/(M*M)),nrow=M,ncol=M,dimnames=list(Adimn,Adimn))
 		## random transition matrix
 		A <- matrix(runif(M*M,0,1),nrow=M,ncol=M,dimnames=list(Adimn,Adimn))
-		A <- A/sum(A,na.rm=TRUE)
+		A <- A/rowSums(A,na.rm=TRUE) ## valid transition matrix has row sums of 1
+		#A <- A/sum(A,na.rm=TRUE)
 		pseudocount <- 1
 		pseudocountsum <- M
 		A <- log2(A)
@@ -152,8 +154,9 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 			ind <- match(as.numeric(sapply(names(transall), function(x) strsplit(x, split="_")[[1]][1])),as.numeric(names(trans)))	
 			transprob <- log2((transall+pseudocount)) - log2(trans[ind]+pseudocountsum)
 			indices <- sapply(names(transprob), function(x,rows) (as.numeric(strsplit(x, "_")[[1]])-c(0,1)) %*% c(1,rows),rows=nrow(A))
-			A[indices] <- transprob	
-			A <- A - log2(sum(2^A, na.rm=TRUE))	
+			A[indices] <- transprob
+			A <- A - log2(rowSums(2^A, na.rm=TRUE))
+			#A <- A - log2(sum(2^A, na.rm=TRUE))	
 		} # end while
 		# now we have an A, an E and a gammaprime for the first experiment
 		# save the gammaprime
@@ -172,6 +175,6 @@ perform.hmmsearch <- function(phi.n, bestmodel) {
 			gammax=gamprimetotal, thetax=thetaprime,
 			replicates=R, Likl=Lik,aic=aic,bic=bic,
 			statespace_maxiterations=hmmiterations, 
-			gammaposs=gamposstotal,scale_lik=scale_lik)
+			gammaposs=gamposstotal,scale_lik=scale_lik,allow.stim.off=allow.stim.off)
 	return(L.res)
 }

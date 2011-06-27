@@ -4,12 +4,14 @@
 ###############################################################################
 runmcmc <- function(x,dat,phiorig,phi,stimuli,th,multicores,outfile,maxiterations,
 		usebics,cores,lambda,B,Z,samplelambda,hmmiterations,fanin,gam,it,K,burnin,
-		priortype,plotresults=TRUE,always_sample_sf=FALSE,scale_lik=FALSE) {
+		priortype,plotresults=TRUE,always_sample_sf=FALSE,scale_lik=FALSE, allow.stim.off=TRUE,
+		debug=0, retobj=NULL) {
 	ret <- mcmc_ddepn(dat, phiorig=phiorig, phi=x$phi, stimuli=stimuli,
 			th=th, multicores=multicores, outfile=x$outfile, maxiterations=maxiterations,
 			usebics=usebics, cores=cores, lambda=lambda, B=B, Z=Z, samplelambda=samplelambda,
 			hmmiterations=hmmiterations,fanin=fanin, gam=gam, it=it, K=K,
-			burnin=burnin,priortype=priortype,plotresults=plotresults,always_sample_sf=always_sample_sf,scale_lik=scale_lik)
+			burnin=burnin,priortype=priortype,plotresults=plotresults,always_sample_sf=always_sample_sf,scale_lik=scale_lik, allow.stim.off=allow.stim.off,
+			debug=debug, retobj=x$retobj)
 	ret
 }
 
@@ -18,7 +20,7 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 		usebics=FALSE, cores=2, lambda=NULL, B=NULL,Z=NULL,
 		samplelambda=NULL, hmmiterations=30, fanin=4,
 		gam=NULL, it=NULL, K=NULL, burnin=1000,priortype="laplaceinhib",plotresults=TRUE,
-		always_sample_sf=FALSE,scale_lik=FALSE) {
+		always_sample_sf=FALSE,scale_lik=FALSE, allow.stim.off=TRUE,debug=0,retobj=NULL) {
 	if(!is.null(outfile))
 		outfile <- sub("\\.pdf","_stats.pdf", outfile)
 	if(!is.null(B))
@@ -28,14 +30,18 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 	antibodies <- rownames(dat)
 	tps <- unique(sapply(colnames(dat), function(x) strsplit(x,"_")[[1]][2]))
 	reps <- table(sub("_[0-9].*$","",colnames(dat))) / length(tps)
-	gammaposs <- propagate.effect.set(phi,stimuli)
+	gammaposs <- propagate.effect.set(phi,stimuli, allow.stim.off=allow.stim.off)
 	# now get an initial gamma matrix
-	gammax <- NULL
-	for(sti in 1:length(stimuli)) {
-		st <- stimuli[[sti]]
-		indices <- grep(paste("^",paste(names(st),collapse="&"),"_",sep=""),colnames(gammaposs))
-		gx <- replicatecolumns(gammaposs[,sort(sample(indices,length(tps),replace=TRUE))],reps[sti])
-		gammax <- cbind(gammax, gx)
+	if(!is.null(retobj)) {
+		gammax <- retobj$gamma
+	} else {
+		gammax <- NULL
+		for(sti in 1:length(stimuli)) {
+			st <- stimuli[[sti]]
+			indices <- grep(paste("^",paste(names(st),collapse="&"),"_",sep=""),colnames(gammaposs))
+			gx <- replicatecolumns(gammaposs[,sort(sample(indices,length(tps),replace=TRUE))],reps[sti])
+			gammax <- cbind(gammax, gx)
+		}
 	}
 	Ltmp <- likl(dat,gammax,scale_lik)
 	Linit <- Ltmp$L
@@ -53,30 +59,62 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 	}
 	## which types for the moves are needed?
 	movetypes <- c("switchtype","delete","addactivation","addinhibition","revert","revswitch") ## v3
-	mu_run <- 0
-	Qi <- 0
-	freqa <- freqi <- eoccur <- phi
-	freqa[freqa!=0] <- 0
-	freqi[freqi!=0] <- 0
-	eoccur[eoccur!=0] <- 0
+	if(!is.null(retobj)) {
+		mu_run <- retobj$mu_run
+		Qi <- retobj$Qi
+		freqa <- retobj$freqa
+		freqi <- retobj$freqi
+		eoccur <- retobj$eoccur
+		iter <- retobj$iter+1
+		lastmove <- retobj$lastmove
+	} else {
+		mu_run <- 0
+		Qi <- 0
+		freqa <- freqi <- eoccur <- phi
+		freqa[freqa!=0] <- 0
+		freqi[freqi!=0] <- 0
+		eoccur[eoccur!=0] <- 0
+		iter <- 1
+		lastmove <- "addactivation"
+	}
 	
 	bestmodel <- list(phi=phi,phiorig=phiorig,L=Linit,aic=aicinit,bic=bicinit,posterior=posteriorinit,dat=dat,
 			theta=thetax, gamma=gammax, gammaposs=gammaposs, tps=tps, stimuli=stimuli, reps=reps,
-			hmmiterations=hmmiterations, lastmove="addactivation", coords=c(1,1),
+			hmmiterations=hmmiterations, lastmove=lastmove, coords=c(1,1),
 			lambda=lambda,B=B,Z=Z,pegm=1,pegmundo=1,nummoves=length(movetypes),fanin=fanin,
 			gam=gam,it=it,K=K,phi.orig=phiorig, burnin=burnin,priortype=priortype,pr=prinit
-			,mu_run=mu_run,Qi=Qi,sd_run=NA,freqa=freqa,freqi=freqi,eoccur=eoccur,scalefac=0.005,scale_lik=scale_lik)
+			,mu_run=mu_run,Qi=Qi,sd_run=NA,freqa=freqa,freqi=freqi,eoccur=eoccur,scalefac=0.005,scale_lik=scale_lik,
+			allow.stim.off=allow.stim.off,iter=iter,samplelambda=samplelambda,always_sample_sf=always_sample_sf)
 	## setup a matrix holding the statistics
 	## TODO if thin==TRUE, this matrix
 	## is of size maxiterations/x=10000, i.e. store every xth element
-	it <- 1
-	stats <- matrix(0, nrow=maxiterations, ncol=18,
+	if(!is.null(retobj)) {
+		stats <- retobj$stats
+		maxiterations <- iter + maxiterations -1 ## get new maximum iteration number
+		stats <- rbind(stats, matrix(0, nrow=(maxiterations-iter+1), ncol=ncol(stats), dimnames=list(iter:maxiterations, colnames(stats))))
+	} else {
+		stats <- matrix(0, nrow=maxiterations, ncol=18,
 			dimnames=list(1:maxiterations, c("MAP", "tp","tn","fp","fn","sn","sp",
 							"lambda","acpt","lacpt","stmove",
 							"lratio","prratio","postratio","proposalratio",
 							"prior","liklihood","scalefac")))
-	while(it <= maxiterations) {
-		cat("iteration ", it, " ")
+	}
+	##########################
+	## MCMC chain
+	##########################
+	cls()
+	if(debug==0) {
+		txt <- paste("# Using inhibMCMC,",cores,"parallel chains #")
+		pad <- paste(rep("#",nchar(txt)),collapse="")
+		print(pad)
+		print(txt)
+		print(pad)
+		pb <- txtProgressBar(min = 0, max = maxiterations, style = 3)
+	}
+	while(iter <= maxiterations) {
+		if(debug==0) {
+			setTxtProgressBar(pb, iter)
+		}
 		if(priortype %in% c("laplaceinhib", "laplace", "uniform")) {
 			## if samplelambda tells to hold lambda "fixed" or to integrate, 
 			## then don't change lambda
@@ -93,8 +131,6 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 				}
 				newlambda <- runif(1, bestmodel$lambda-stepsize, bestmodel$lambda+stepsize)
 				newlambda <- min(max(1e-8,newlambda),100)
-				#newlambda <- runif(1, bestmodel$lambda-1, bestmodel$lambda+1)
-				#newlambda <- min(max(0.01,newlambda),500)
 			}
 		} else if(priortype=="scalefree") { ## keep gam fixed
 			#newgam <- runif(1, bestmodel$gam-1, bestmodel$gam+1)
@@ -117,10 +153,11 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 			print("Posterior of proposal is Inf. Please check.")
 			browser()
 		}
+		bestmodel[["iter"]] <- iter
 		if(priortype %in% c("laplaceinhib","laplace","uniform")) {
-			ret <- mcmc_accept(bestmodel, b1, newlambda)
+			ret <- mcmc_accept(bestmodel, b1, newlambda, debug)
 		} else if (priortype=="scalefree") {
-			ret <- mcmc_accept(bestmodel, b1, newgam)
+			ret <- mcmc_accept(bestmodel, b1, newgam, debug)
 		}
 		if(ret$bestproposal$posterior==Inf || ret$bestproposal$posterior==-Inf) {
 			print("Posterior of accepted model is Inf. Please check.")
@@ -137,23 +174,25 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 		### sf is fixed after the burnin
 		## to lie around 0.4. don't know if this is a reasonable level for acceptance rates,
 		## suggested in Gelman 2003, chapter 11.10, recommended posterior simulation strategy
-		if(it<=burnin | always_sample_sf==TRUE) {
+		## sample the scaling factor up to half of the burn-in, then hold fixed and let 
+		## the sampler mix until the end of the burn-in
+		if(iter<=(burnin/2) | always_sample_sf==TRUE) {
 			## find scale factor that holds acpt around .4, see gelman 2003 for explanation
 			if((posteriorratio+proposalratio)==0)
-				if(it==1 || all(stats[1:it,"scalefac"]==Inf)) ## some fallback scalefactor
+				if(iter==1 || all(stats[1:iter,"scalefac"]==Inf)) ## some fallback scalefactor
 					scalefac <- 0.005
 				else
-					scalefac <- median(stats[1:it,"scalefac"])
+					scalefac <- median(stats[1:iter,"scalefac"])
 			else
-				scalefac <- min(abs(log(0.4))/abs(posteriorratio+proposalratio),1) ## is kept smaller 1	
+				scalefac <- min(abs(log(0.4))/abs(posteriorratio+proposalratio),1) ## is kept smaller 1, log 0.4 yields sfs around .6
 		} else {
-			sf <- stats[1:burnin,"scalefac"]
-			scalefac <- max(0.001,median(sf[sf!=Inf],na.rm=TRUE))
+			sf <- stats[1:(min(iter,burnin)),"scalefac"]
+			scalefac <- max(1e-20,median(sf[sf!=Inf],na.rm=TRUE))
 		}
 		bestmodel$scalefac <- scalefac
-		bestmodel[["it"]] <- it
+		bestmodel[["iter"]] <- iter
 		
-		if(it>burnin) {
+		if(iter>burnin) {
 			## count how often any edge occurred at a given position
 			tmp <- bestmodel$phi
 			tmp[bestmodel$phi==2] <- 0
@@ -178,18 +217,18 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 			## update mean and standard deviations of theta parameters
 			bth <- bestmodel$theta
 			bth[is.na(bth)] <- 0
-			mu_run_plus1 <- bestmodel$mu_run + 1/it * (bth - bestmodel$mu_run)
+			mu_run_plus1 <- bestmodel$mu_run + 1/iter * (bth - bestmodel$mu_run)
 			Qiplus1 <- bestmodel$Qi + (bth - bestmodel$mu_run) * (bth - mu_run_plus1)
 			bestmodel[["mu_run"]] <- mu_run_plus1
 			bestmodel[["Qi"]] <- Qiplus1
-			bestmodel[["sd_run"]] <- sqrt((1/(it-1)) * Qiplus1) 
+			bestmodel[["sd_run"]] <- sqrt((1/(iter-1)) * Qiplus1) 
 		}
 		## get an intermediate network from the samplings
-		if(it>burnin)
+		if(iter>burnin)
 			lst <- get.phi.final(bestmodel,th=th) # set th around 0.8
 		else
 			lst <- bestmodel # if in burnin, just use whatever is there
-		if(!is.null(phiorig) & it > burnin) {
+		if(!is.null(phiorig) & iter > burnin) {
 			comp <- compare.graphs.tc(phiorig=phiorig,phi=lst$phi)
 		} else {
 			comp <- rep(0,8)
@@ -203,21 +242,21 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 		}
 		if(nrow(replace)!=1)
 			replace <- t(replace)
-		stats[it,] <- replace
+		stats[iter,] <- replace
 		# some convergence statistic -> should become gelmans Rhat at some time
 		#SSW <- sd(stats[,"MAP"],na.rm=T)
 		#SSB <- 
 		#Rhat <- ((nrow(stats)-1)/nrow(stats)) * SSW
-		if(it%%250==1 && it > burnin){
+		if(iter%%250==1 && iter > burnin){
 			if(plotresults) {
 				if(!is.null(outfile))
 					pdf(outfile,width=10,height=10)
 				start <- burnin + 1
 				layout(matrix(c(1,2,3,4,5,6,7,8,9), 3, 3, byrow = TRUE))
 				## posterior
-				plot(1:it, stats[1:it,"MAP"], type='l', ylab="", xlab="iteration", main="Posterior trace")
+				plot(1:iter, stats[1:iter,"MAP"], type='l', ylab="", xlab="iteration", main="Posterior trace")
 				abline(v=start,col="green")
-				plot(1:it, stats[1:it,"postratio"], type='l', ylab="", xlab="iteration", main="Posterior ratios")
+				plot(1:iter, stats[1:iter,"postratio"], type='l', ylab="", xlab="iteration", main="Posterior ratios")
 				abline(v=start,col="green")	
 				## orig/inferred network
 				if(is.null(phiorig)) {
@@ -227,39 +266,39 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 					plotdetailed(phiorig,stimuli=lst$stimuli,fontsize=15,main="Original net")
 				}
 				## liklihood
-				plot(1:it, stats[1:it,"liklihood"], type='l', ylab="", xlab="iteration", main="Liklihood trace")
+				plot(1:iter, stats[1:iter,"liklihood"], type='l', ylab="", xlab="iteration", main="Liklihood trace")
 				abline(v=start,col="green")
-				plot(1:it, stats[1:it,"lratio"], type='l', ylab="", xlab="iteration", main="Liklihood ratios")
+				plot(1:iter, stats[1:iter,"lratio"], type='l', ylab="", xlab="iteration", main="Liklihood ratios")
 				abline(v=start,col="green")
 				## inferred network
 				plotdetailed(lst$phi,stimuli=lst$stimuli,weights=lst$weights,fontsize=15, main="Inferred net")	
 				## prior
-				plot(1:it, stats[1:it,"prior"], type='l', ylab="", xlab="iteration", main="Prior trace")
+				plot(1:iter, stats[1:iter,"prior"], type='l', ylab="", xlab="iteration", main="Prior trace")
 				abline(v=start,col="green")
-				plot(1:it, stats[1:it,"prratio"], type='l', ylab="", xlab="iteration", main="Prior ratios")
+				plot(1:iter, stats[1:iter,"prratio"], type='l', ylab="", xlab="iteration", main="Prior ratios")
 				abline(v=start,col="green")
 				## roc curve
 				perf <- mcmc_performance(lst)
 				# some more statistics that could be plotted
 				### acceptance rate
-				#stpl <- stats[1:it,"acpt"]
+				#stpl <- stats[1:iter,"acpt"]
 				#hist(stpl[stpl!=1],breaks=100,main="Acceptance rates (only != 1)")
 				### sn/sp plot
-				#boxplot(as.data.frame(stats[((burnin+1):it),c("sn","sp","acpt","lacpt")]), ylim=c(0,1),
-				#		main=paste("avgSN: ", signif(median(stats[(burnin:it),"sn"]),digits=4), "avgSP: ", signif(median(stats[(burnin:it),"sp"]),digits=4)))
+				#boxplot(as.data.frame(stats[((burnin+1):iter),c("sn","sp","acpt","lacpt")]), ylim=c(0,1),
+				#		main=paste("avgSN: ", signif(median(stats[(burnin:iter),"sn"]),digits=4), "avgSP: ", signif(median(stats[(burnin:iter),"sp"]),digits=4)))
 				# partial autocorrelation function:
-				#R <- acf(stats[1:it,"MAP"])
+				#R <- acf(stats[1:iter,"MAP"])
 				if(!is.null(outfile))
 					dev.off()
 			}
 		}
-		if(it%%1000==1 && !is.null(outfile)) {
+		if(iter%%1000==1 && !is.null(outfile)) {
 			rdfile <- sub(".pdf$","_mcmcdata.RData",outfile)
-			save(bestmodel,stats,freqa,freqi,it,file=rdfile)
+			save(bestmodel,stats,freqa,freqi,iter,file=rdfile)
 		}
-		it <- it + 1
-
+		iter <- iter + 1
 	}
+	print("done.")
 	bestmodel[["stats"]] <- stats
 	bestmodel[["freqa"]] <- freqa
 	bestmodel[["freqi"]] <- freqi

@@ -5,13 +5,13 @@
 runmcmc <- function(x,dat,phiorig,phi,stimuli,th,multicores,outfile,maxiterations,
 		usebics,cores,lambda,B,Z,samplelambda,hmmiterations,fanin,gam,it,K,burnin,
 		priortype,plotresults=TRUE,always_sample_sf=FALSE,scale_lik=FALSE, allow.stim.off=TRUE,
-		debug=0, retobj=NULL) {
+		debug=0, retobj=NULL, implementation="C") {
 	ret <- mcmc_ddepn(dat, phiorig=phiorig, phi=x$phi, stimuli=stimuli,
 			th=th, multicores=multicores, outfile=x$outfile, maxiterations=maxiterations,
 			usebics=usebics, cores=cores, lambda=lambda, B=B, Z=Z, samplelambda=samplelambda,
 			hmmiterations=hmmiterations,fanin=fanin, gam=gam, it=it, K=K,
 			burnin=burnin,priortype=priortype,plotresults=plotresults,always_sample_sf=always_sample_sf,scale_lik=scale_lik, allow.stim.off=allow.stim.off,
-			debug=debug, retobj=x$retobj)
+			debug=debug, retobj=x$retobj, implementation=implementation)
 	ret
 }
 
@@ -20,7 +20,8 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 		usebics=FALSE, cores=2, lambda=NULL, B=NULL,Z=NULL,
 		samplelambda=NULL, hmmiterations=30, fanin=4,
 		gam=NULL, it=NULL, K=NULL, burnin=1000,priortype="laplaceinhib",plotresults=TRUE,
-		always_sample_sf=FALSE,scale_lik=FALSE, allow.stim.off=TRUE,debug=0,retobj=NULL) {
+		always_sample_sf=FALSE,scale_lik=FALSE, allow.stim.off=TRUE,debug=0,retobj=NULL,
+		implementation="C") {
 	if(!is.null(outfile))
 		outfile <- sub("\\.pdf","_stats.pdf", outfile)
 	if(!is.null(B))
@@ -93,7 +94,8 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 			lambda=lambda,B=B,Z=Z,pegm=1,pegmundo=1,nummoves=length(movetypes),fanin=fanin,
 			gam=gam,it=it,K=K,phi.orig=phiorig, burnin=burnin,priortype=priortype,pr=prinit
 			,mu_run=mu_run,Qi=Qi,sd_run=NA,freqa=freqa,freqi=freqi,eoccur=eoccur,scalefac=0.005,scale_lik=scale_lik,
-			allow.stim.off=allow.stim.off,iter=iter,samplelambda=samplelambda,always_sample_sf=always_sample_sf)
+			allow.stim.off=allow.stim.off,iter=iter,samplelambda=samplelambda,always_sample_sf=always_sample_sf, 
+			implementation=implementation)
 	## setup a matrix holding the statistics
 	## TODO if thin==TRUE, this matrix
 	## is of size maxiterations/x=10000, i.e. store every xth element
@@ -242,7 +244,7 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 		else
 			lst <- bestmodel # if in burnin, just use whatever is there
 		if(!is.null(phiorig) & iter > burnin) {
-			comp <- compare.graphs.tc(phiorig=phiorig,phi=lst$phi)
+			comp <- compareGraphs(phiorig=phiorig,phi=lst$phi)
 		} else {
 			comp <- rep(0,8)
 			names(comp) <- c("tp","tn","fp","fn","sn","sp","prec","f1")
@@ -264,43 +266,48 @@ mcmc_ddepn <- function(dat, phiorig=NULL, phi=NULL, stimuli=NULL,
 			if(plotresults) {
 				if(!is.null(outfile))
 					pdf(outfile,width=10,height=10)
-				start <- burnin + 1
-				layout(matrix(c(1,2,3,4,5,6,7,8,9), 3, 3, byrow = TRUE))
-				## posterior
-				plot(1:iter, stats[1:iter,"MAP"], type='l', ylab="", xlab="iteration", main="Posterior trace")
-				abline(v=start,col="green")
-				plot(1:iter, stats[1:iter,"postratio"], type='l', ylab="", xlab="iteration", main="Posterior ratios")
-				abline(v=start,col="green")	
-				## orig/inferred network
-				if(is.null(phiorig)) {
-					plot.new()
-					text(0.5,0.5,labels="no origininal network given")
-				} else {
-					plotdetailed(phiorig,stimuli=lst$stimuli,fontsize=15,main="Original net")
+					
+				## only plot if outfile is given or if cores==1
+				## if multiple cores are use, no plotting to display is permitted
+				if(!is.null(outfile) | cores==1) {
+					start <- burnin + 1
+					layout(matrix(c(1,2,3,4,5,6,7,8,9), 3, 3, byrow = TRUE))
+					## posterior
+					plot(1:iter, stats[1:iter,"MAP"], type='l', ylab="", xlab="iteration", main="Posterior trace")
+					abline(v=start,col="green")
+					plot(1:iter, stats[1:iter,"postratio"], type='l', ylab="", xlab="iteration", main="Posterior ratios")
+					abline(v=start,col="green")	
+					## orig/inferred network
+					if(is.null(phiorig)) {
+						plot.new()
+						text(0.5,0.5,labels="no origininal network given")
+					} else {
+						plotdetailed(phiorig,stimuli=lst$stimuli,fontsize=15,main="Original net")
+					}
+					## liklihood
+					plot(1:iter, stats[1:iter,"liklihood"], type='l', ylab="", xlab="iteration", main="Liklihood trace")
+					abline(v=start,col="green")
+					plot(1:iter, stats[1:iter,"lratio"], type='l', ylab="", xlab="iteration", main="Liklihood ratios")
+					abline(v=start,col="green")
+					## inferred network
+					plotdetailed(lst$phi,stimuli=lst$stimuli,weights=lst$weights,fontsize=15, main="Inferred net")	
+					## prior
+					plot(1:iter, stats[1:iter,"prior"], type='l', ylab="", xlab="iteration", main="Prior trace")
+					abline(v=start,col="green")
+					plot(1:iter, stats[1:iter,"prratio"], type='l', ylab="", xlab="iteration", main="Prior ratios")
+					abline(v=start,col="green")
+					## roc curve
+					perf <- mcmc_performance(lst)
+					# some more statistics that could be plotted
+					### acceptance rate
+					#stpl <- stats[1:iter,"acpt"]
+					#hist(stpl[stpl!=1],breaks=100,main="Acceptance rates (only != 1)")
+					### sn/sp plot
+					#boxplot(as.data.frame(stats[((burnin+1):iter),c("sn","sp","acpt","lacpt")]), ylim=c(0,1),
+					#		main=paste("avgSN: ", signif(median(stats[(burnin:iter),"sn"]),digits=4), "avgSP: ", signif(median(stats[(burnin:iter),"sp"]),digits=4)))
+					# partial autocorrelation function:
+					#R <- acf(stats[1:iter,"MAP"])
 				}
-				## liklihood
-				plot(1:iter, stats[1:iter,"liklihood"], type='l', ylab="", xlab="iteration", main="Liklihood trace")
-				abline(v=start,col="green")
-				plot(1:iter, stats[1:iter,"lratio"], type='l', ylab="", xlab="iteration", main="Liklihood ratios")
-				abline(v=start,col="green")
-				## inferred network
-				plotdetailed(lst$phi,stimuli=lst$stimuli,weights=lst$weights,fontsize=15, main="Inferred net")	
-				## prior
-				plot(1:iter, stats[1:iter,"prior"], type='l', ylab="", xlab="iteration", main="Prior trace")
-				abline(v=start,col="green")
-				plot(1:iter, stats[1:iter,"prratio"], type='l', ylab="", xlab="iteration", main="Prior ratios")
-				abline(v=start,col="green")
-				## roc curve
-				perf <- mcmc_performance(lst)
-				# some more statistics that could be plotted
-				### acceptance rate
-				#stpl <- stats[1:iter,"acpt"]
-				#hist(stpl[stpl!=1],breaks=100,main="Acceptance rates (only != 1)")
-				### sn/sp plot
-				#boxplot(as.data.frame(stats[((burnin+1):iter),c("sn","sp","acpt","lacpt")]), ylim=c(0,1),
-				#		main=paste("avgSN: ", signif(median(stats[(burnin:iter),"sn"]),digits=4), "avgSP: ", signif(median(stats[(burnin:iter),"sp"]),digits=4)))
-				# partial autocorrelation function:
-				#R <- acf(stats[1:iter,"MAP"])
 				if(!is.null(outfile))
 					dev.off()
 			}
